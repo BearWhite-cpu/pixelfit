@@ -1,0 +1,22 @@
+const C=require("../app/src/main/assets/core.js"),M=require("../app/src/main/assets/anatomy.js");let n=0,f=0;
+const ok=(c,m)=>{n++;if(!c){f++;console.log("FAIL:",m)}else console.log("ok  :",m)};
+const ids=new Set(C.MUSCLES.map(m=>m.muscleId)),regs=new Set(M.regionIds());
+ok(C.MUSCLES.every(m=>m.muscleId&&m.name&&m.anatomicalRegion&&["anterior","posterior","lateral"].includes(m.viewType)&&m.mapRegionId),"Muscle 实体字段齐全，viewType 合法");
+ok(C.MUSCLES.every(m=>regs.has(m.mapRegionId)),"每个肌肉的 mapRegionId 都能在 SVG 里找到");
+ok([...regs].every(r=>C.MUSCLES.some(m=>m.mapRegionId===r)),"SVG 每个区域都对应一块肌肉");
+const F=["primaryMuscles","secondaryMuscles","stabilizerMuscles","anatomyMapId","movementPattern","techniqueNotes","warmupNotes"];
+ok(C.BUILTIN.every(e=>F.every(k=>k in e)),"每个内置动作都有新增的7个字段");
+ok(C.BUILTIN.every(e=>e.primaryMuscles.length>0),"每个动作至少有一个主要肌群");
+ok(C.BUILTIN.every(e=>[...e.primaryMuscles,...e.secondaryMuscles,...e.stabilizerMuscles].every(m=>ids.has(m))),"动作引用的肌肉ID全部存在");
+ok(C.BUILTIN.every(e=>{const a=[...e.primaryMuscles,...e.secondaryMuscles,...e.stabilizerMuscles];return a.length===new Set(a).size}),"同一动作的主要/协同/稳定互不重叠");
+ok(C.BUILTIN.every(e=>["body-front","body-back"].includes(e.anatomyMapId)&&C.PATTERNS[e.movementPattern]&&e.techniqueNotes.length&&e.warmupNotes.length),"图谱ID、训练目的、要点、热身齐全");
+const sm=C.muscleSummary(C.newDB(),["bench","ohp"]);
+ok(sm.triceps.level==="secondary"&&sm.front_delt.level==="primary"&&sm.pectorals.level==="primary","多个动作汇总：主要优先于协同（前束在卧推是协同、肩推是主要）");
+ok(new Set(Object.values(sm).map(x=>x.level)).size===3,"总览同时出现主要/协同/稳定三个强度，不是等强度");
+ok(sm.front_delt.ex.length===2,"点击肌群可得到参与动作列表");
+ok(C.prepInfo(C.newDB(),["bench"]).warm.length>0&&C.prepInfo(C.newDB(),["bench"]).focus[0]==="胸大肌","训练准备：重点、热身");
+const s=M.svg("front",{levels:{pec:1,bicep:2,abs:3},ids:{pec:"pectorals"}});
+ok((s.match(/data-l="1"/g)||[]).length===2&&(s.match(/data-l="2"/g)||[]).length===2&&/url\(#hz/.test(s),"SVG：左右对称高亮，三种强度样式不同");
+ok(/viewBox="0 0 200 400"/.test(s)&&!/viewBox="0 0 200 400"/.test(M.svg("front",{levels:{pec:1},zoom:true})),"局部视图会裁剪到高亮区域");
+const d=C.newDB();ok(Array.isArray(d.muscleFeedback)&&d.muscleFeedback.length===0&&!JSON.stringify(d).includes("signalValue"),"预留 muscleFeedback 为空，不含任何模拟数据");
+console.log(n-f+"/"+n+" 通过");process.exit(f?1:0)

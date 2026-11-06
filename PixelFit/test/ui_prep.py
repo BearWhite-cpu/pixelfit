@@ -1,0 +1,33 @@
+import json,sys
+from playwright.sync_api import sync_playwright
+res=[];errs=[]
+def ok(c,m):res.append(c);print("ok  :" if c else "FAIL:",m)
+with sync_playwright() as p:
+    b=p.chromium.launch();pg=b.new_page(viewport={"width":360,"height":740})
+    pg.on("pageerror",lambda e:errs.append(str(e)));pg.on("dialog",lambda d:d.accept())
+    pg.goto("file:///mnt/user-data/outputs/pixelfit-preview.html")
+    pg.click("[data-a=tab][data-id=train]");pg.click("[data-a=prep]");ok("训练准备" in pg.inner_text("body"),"进入训练准备页")
+    for ex in ("bench","goblet_squat","pullup_assist"):
+        pg.click("[data-a=addplan]");pg.click(f"[data-id={ex}]")
+    ok(pg.locator(".maps svg").count()==2,"总览同时显示正面和背面两张图")
+    cnt=lambda l:pg.locator(f'.maps .rg[data-l="{l}"]').count()
+    ok(cnt(1)>0 and cnt(2)>0 and cnt(3)>0,f"主要/协同/稳定均有高亮（{cnt(1)}/{cnt(2)}/{cnt(3)}）")
+    pg.locator('.maps .rg[data-r=pec]').first.dispatch_event("click");t=pg.inner_text(".card:has(.maps)")
+    ok("胸大肌" in t and "哑铃卧推" in t,"点击胸大肌显示名称和参与动作")
+    pg.locator('.maps .rg[data-r=lat]').first.dispatch_event("click");ok("辅助引体向上" in pg.inner_text(".card:has(.maps)"),"点击背阔肌（背面）显示辅助引体")
+    ok("今日重点" in pg.inner_text("body") and "建议热身" in pg.inner_text("body") and "注意事项" in pg.inner_text("body"),"今日重点/建议热身/注意事项齐全")
+    pg.screenshot(path="shot_prep.png",full_page=True)
+    pg.click("[data-a=exopen][data-id=bench]");t=pg.inner_text("body");ok("训练目的" in t and "动作要点" in t,"单个动作：训练目的与要点")
+    vb=lambda:pg.locator(".one svg").get_attribute("viewBox")
+    pg.click("[data-a=view][data-v=back]");ok(pg.locator('.one .rg[data-r=lat]').count()>0,"切换到背面")
+    pg.click("[data-a=view][data-v=front]");pg.click("[data-a=view][data-v=zoom]");ok(vb()!="0 0 200 400","局部视图缩放到相关区域："+vb())
+    pg.screenshot(path="shot_ex.png",full_page=True)
+    pg.click("[data-a=begin]");ok(pg.locator(".card h3:has-text('哑铃卧推')").count()==1 and pg.locator("[data-a=anat]").count()==3,"开始后记录器含3个动作，且各有肌肉图入口")
+    ok(pg.input_value('[data-f=w][data-j="0"]')=="" ,"首次训练不预设重量")
+    pg.click("[data-a=anat][data-id=bench]");ok("胸大肌" in pg.inner_text(".sheet"),"记录器内可打开同一份肌肉图谱");pg.click("[data-a=closeanat]")
+    pg.fill('[data-f=w][data-j="0"]',"10");pg.fill('[data-f=reps][data-j="0"]',"10");pg.click('[data-a=done][data-j="0"]');pg.click("[data-a=finish]");pg.click("[data-a=save]")
+    st=json.loads(pg.evaluate("localStorage.getItem('pixelfit.db.v1')"));ok(len(st["sessions"])==1 and st["plan"]==[],"保存训练成功，计划已清空")
+    pg.reload();pg.click("[data-a=tab][data-id=train]");pg.click("[data-a=prep]");pg.click("[data-a=addplan]");pg.click("[data-id=bench]");pg.click("[data-a=begin]")
+    ok("上次" in pg.inner_text("body") and "每组增加 1 次" in pg.inner_text("body"),"准备流程下仍显示上次成绩与渐进建议")
+    b.close()
+print([e for e in errs]);print(sum(res),"/",len(res),"通过");sys.exit(0 if all(res) else 1)
